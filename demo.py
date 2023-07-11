@@ -120,6 +120,45 @@ def preprocess_image(img_path, json_path, model_configuration):
     return crop, proc_param, img
 
 
+def preprocess_image_v2(image, json_path, model_configuration):
+    """
+    Similar to preprocess_image, but accept image instead of img_path
+
+    Args:
+        img_path (_type_): _description_
+        json_path (_type_): _description_
+        model_configuration (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+
+    img = image.copy()
+
+    if img.shape[2] == 4:
+        img = img[:, :, :3]
+
+    if json_path is None:
+        if np.max(img.shape[:2]) != model_configuration.img_size:
+            print('Resizing so the max image size is %d..' % model_configuration.img_size)
+            scale = (float(model_configuration.img_size) / np.max(img.shape[:2]))
+        else:
+            scale = 1.
+        center = np.round(np.array(img.shape[:2]) / 2).astype(int)
+        # image center in (x,y)
+        center = center[::-1]
+    else:
+        scale, center = op_util.get_bbox(json_path)
+
+    crop, proc_param = img_util.scale_and_crop(
+        img, scale, center, model_configuration.img_size)
+
+    # Normalize image to [-1, 1]
+    crop = 2 * ((crop / 255.) - 0.5)
+
+    return crop, proc_param, img
+
+
 def main(img_path, json_path=None):
     sess = tf.Session()
     model = RunModel(config, sess=sess)

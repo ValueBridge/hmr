@@ -21,6 +21,7 @@ def visualize_mesh_predictions(_context, config_path):
 
     import box
     import tensorflow as tf
+    import skimage.io
     import tqdm
 
     import photobridge.logging
@@ -44,23 +45,26 @@ def visualize_mesh_predictions(_context, config_path):
 
     for image_path in tqdm.tqdm(sorted(glob.glob(os.path.join(config["test_data_dir"], "*.jpg")))):
 
-        input_img, preprocessing_parameters, img = demo.preprocess_image(
-            img_path=image_path, json_path=None, model_configuration=model_config)
+        full_resolution_image = skimage.io.imread(image_path)
+
+        model_input_image, preprocessing_parameters, img = demo.preprocess_image_v2(
+            image=full_resolution_image, json_path=None, model_configuration=model_config)
 
         # Add batch dimension: 1 x D x D x 3
-        input_img = np.expand_dims(input_img, 0)
+        model_input_image = np.expand_dims(model_input_image, 0)
 
         # Theta is the 85D vector holding [camera, pose, shape]
         # where camera is 3D [s, tx, ty]
         # pose is 72D vector holding the rotation of 24 joints of SMPL in axis angle format
         # shape is 10D shape coefficients of SMPL
         joints, vertices, cameras, joints3d, theta = model.predict(
-            input_img, get_theta=True)
+            model_input_image, get_theta=True)
 
         photobridge.logging.log_mesh_prediction(
             logger=logger,
             image_path=image_path,
-            image=img,
+            full_resolution_image=full_resolution_image,
+            model_input_image=img,
             preprocessing_parameters=preprocessing_parameters,
             joints=joints[0],
             vertices=vertices[0],
