@@ -3,14 +3,19 @@ Module with logging utilities
 """
 
 import logging
+import os
 
-import matplotlib.pyplot as plt
+import cv2
 import vlogging
 
 import src.util.renderer
 
 def log_mesh_prediction(
-        logger: logging.getLogger, image_path, image, preprocessing_parameters: dict,
+        logger: logging.getLogger,
+        image_path: src,
+        full_resolution_image,
+        model_input_image,
+        preprocessing_parameters: dict,
         joints, vertices, camera, smpl_face_path):
 
     cam_for_render, vert_shifted, joints_orig = src.util.renderer.get_original(
@@ -18,52 +23,24 @@ def log_mesh_prediction(
         verts=vertices,
         cam=camera,
         joints=joints,
-        img_size=image.shape[:2]
+        img_size=model_input_image.shape[:2]
     )
 
-    # Render results
-    skel_img = src.util.renderer.draw_skeleton(image, joints_orig)
-
-    renderer = src.util.renderer.SMPLRenderer(face_path=smpl_face_path)
+    renderer = src.util.renderer.FullResolutionSMPLRenderer(face_path=smpl_face_path)
 
     rend_img_overlay = renderer(
-        vert_shifted, cam=cam_for_render, img=image, do_alpha=True)
-    rend_img = renderer(
-        vert_shifted, cam=cam_for_render, img_size=image.shape[:2])
-    rend_img_vp1 = renderer.rotated(
-        vert_shifted, 60, cam=cam_for_render, img_size=image.shape[:2])
-    rend_img_vp2 = renderer.rotated(
-        vert_shifted, -60, cam=cam_for_render, img_size=image.shape[:2])
-
-    figure = plt.figure()
-
-    plt.clf()
-    plt.subplot(231)
-    plt.imshow(image)
-    plt.title('input')
-    plt.axis('off')
-    plt.subplot(232)
-    plt.imshow(skel_img)
-    plt.title('joint projection')
-    plt.axis('off')
-    plt.subplot(233)
-    plt.imshow(rend_img_overlay)
-    plt.title('3D Mesh overlay')
-    plt.axis('off')
-    plt.subplot(234)
-    plt.imshow(rend_img)
-    plt.title('3D mesh')
-    plt.axis('off')
-    plt.subplot(235)
-    plt.imshow(rend_img_vp1)
-    plt.title('diff vp')
-    plt.axis('off')
-    plt.subplot(236)
-    plt.imshow(rend_img_vp2)
-    plt.title('diff vp')
-    plt.axis('off')
-    plt.draw()
+        vert_shifted,
+        cam=cam_for_render,
+        full_resolution_image=full_resolution_image,
+        model_input_image=model_input_image,
+        do_alpha=True)
 
     logger.info(
-        vlogging.VisualRecord(image_path, figure)
+        vlogging.VisualRecord(
+            image_path,
+            imgs=[
+                cv2.cvtColor(full_resolution_image, cv2.COLOR_RGB2BGR),
+                cv2.cvtColor(rend_img_overlay, cv2.COLOR_RGBA2BGR)
+            ]
+        )
     )

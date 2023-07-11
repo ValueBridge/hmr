@@ -9,7 +9,6 @@ from __future__ import print_function
 import numpy as np
 import cv2
 
-import icecream
 from opendr.camera import ProjectPoints
 from opendr.renderer import ColoredRenderer
 from opendr.lighting import LambertianPointLight
@@ -22,27 +21,32 @@ colors = {
 
 
 class SMPLRenderer(object):
-    def __init__(self,
-                 img_size=224,
-                 flength=500.,
-                 face_path="tf_smpl/smpl_faces.npy"):
+    def __init__(
+        self,
+        img_size=224,
+        flength=500.,
+        face_path="tf_smpl/smpl_faces.npy"):
+
         self.faces = np.load(face_path)
         self.w = img_size
         self.h = img_size
         self.flength = flength
 
-    def __call__(self,
-                 verts,
-                 cam=None,
-                 img=None,
-                 do_alpha=False,
-                 far=None,
-                 near=None,
-                 color_id=0,
-                 img_size=None):
+    def __call__(
+            self,
+            verts,
+            cam=None,
+            img=None,
+            do_alpha=False,
+            far=None,
+            near=None,
+            color_id=0,
+            img_size=None):
+
         """
         cam is 3D [f, px, py]
         """
+
         if img is not None:
             h, w = img.shape[:2]
         elif img_size is not None:
@@ -81,17 +85,19 @@ class SMPLRenderer(object):
 
         return (imtmp * 255).astype('uint8')
 
-    def rotated(self,
-                verts,
-                deg,
-                cam=None,
-                axis='y',
-                img=None,
-                do_alpha=True,
-                far=None,
-                near=None,
-                color_id=0,
-                img_size=None):
+    def rotated(
+        self,
+        verts,
+        deg,
+        cam=None,
+        axis='y',
+        img=None,
+        do_alpha=True,
+        far=None,
+        near=None,
+        color_id=0,
+        img_size=None):
+
         import math
         if axis == 'y':
             around = cv2.Rodrigues(np.array([0, math.radians(deg), 0]))[0]
@@ -113,15 +119,108 @@ class SMPLRenderer(object):
             color_id=color_id)
 
 
-def _create_renderer(w=640,
-                     h=480,
-                     rt=np.zeros(3),
-                     t=np.zeros(3),
-                     f=None,
-                     c=None,
-                     k=None,
-                     near=.5,
-                     far=10.):
+class FullResolutionSMPLRenderer(object):
+    def __init__(
+        self,
+        flength=500.,
+        face_path="tf_smpl/smpl_faces.npy"):
+
+        self.faces = np.load(face_path)
+        self.flength = flength
+
+    def __call__(
+            self,
+            verts,
+            cam,
+            full_resolution_image,
+            model_input_image,
+            do_alpha=False,
+            far=None,
+            near=None,
+            color_id=0):
+
+        """
+        cam is 3D [f, px, py]
+        """
+
+        # image_height, image_width = model_input_image.shape[:2]
+        image_height, image_width = full_resolution_image.shape[:2]
+
+        if cam is None:
+            cam = [self.flength, image_width / 2., image_height / 2.]
+
+        use_cam = ProjectPoints(
+            f=cam[0] * np.ones(2),
+            rt=np.zeros(3),
+            t=np.zeros(3),
+            k=np.zeros(5),
+            c=cam[1:3])
+
+        if near is None:
+            near = np.maximum(np.min(verts[:, 2]) - 25, 0.1)
+        if far is None:
+            far = np.maximum(np.max(verts[:, 2]) + 25, 25)
+
+        imtmp = render_model(
+            verts,
+            self.faces,
+            image_width,
+            image_height,
+            use_cam,
+            do_alpha=do_alpha,
+            # img=model_input_image,
+            img=full_resolution_image,
+            far=far,
+            near=near,
+            color_id=color_id)
+
+        return (imtmp * 255).astype('uint8')
+
+    def rotated(
+        self,
+        verts,
+        deg,
+        cam=None,
+        axis='y',
+        img=None,
+        do_alpha=True,
+        far=None,
+        near=None,
+        color_id=0,
+        img_size=None):
+
+        import math
+        if axis == 'y':
+            around = cv2.Rodrigues(np.array([0, math.radians(deg), 0]))[0]
+        elif axis == 'x':
+            around = cv2.Rodrigues(np.array([math.radians(deg), 0, 0]))[0]
+        else:
+            around = cv2.Rodrigues(np.array([0, 0, math.radians(deg)]))[0]
+        center = verts.mean(axis=0)
+        new_v = np.dot((verts - center), around) + center
+
+        return self.__call__(
+            new_v,
+            cam,
+            model_input_image=img,
+            do_alpha=do_alpha,
+            far=far,
+            near=near,
+            img_size=img_size,
+            color_id=color_id)
+
+
+
+def _create_renderer(
+    w=640,
+    h=480,
+    rt=np.zeros(3),
+    t=np.zeros(3),
+    f=None,
+    c=None,
+    k=None,
+    near=.5,
+    far=10.):
 
     f = np.array([w, w]) / 2. if f is None else f
     c = np.array([w, h]) / 2. if c is None else c
@@ -200,16 +299,18 @@ def append_alpha(imtmp):
     return im_RGBA
 
 
-def render_model(verts,
-                 faces,
-                 w,
-                 h,
-                 cam,
-                 near=0.5,
-                 far=25,
-                 img=None,
-                 do_alpha=False,
-                 color_id=None):
+def render_model(
+    verts,
+    faces,
+    w,
+    h,
+    cam,
+    near=0.5,
+    far=25,
+    img=None,
+    do_alpha=False,
+    color_id=None):
+
     rn = _create_renderer(
         w=w, h=h, near=near, far=far, rt=cam.rt, t=cam.t, f=cam.f, c=cam.c)
 
@@ -307,8 +408,6 @@ def draw_skeleton(input_image, joints, draw_edges=True, vis=None, radius=None):
         'gray': np.array([130, 130, 130]),  #
         'white': np.array([255, 255, 255]),  #
     }
-
-    tuples_colors_map = {name: tuple(color) for name, color in colors.items()}
 
     image = input_image.copy()
     input_is_float = False
