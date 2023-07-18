@@ -60,6 +60,35 @@ def visualize_mesh_predictions(_context, config_path):
         joints, vertices, cameras, joints3d, theta = model.predict(
             model_input_image, get_theta=True)
 
+        # Last 10 values of theta should represent SMPL shape parameters
+        poses = theta[:, model.num_cam:(model.num_cam + model.num_theta)]
+        shapes = theta[:, (model.num_cam + model.num_theta):]
+
+        # Parameter 0 controls overall body size
+        # shapes[0][0] = -2.0
+
+        # Parameters 1, 2, 3 control chest, shoulders and torso
+        # shapes[0][1] = -2
+        # shapes[0][2] = -2.0
+        # shapes[0][3] = -2
+
+        # Parameters 4 and 5 control waist width
+        shapes[0][4] = -3
+        shapes[0][5] = -3
+
+        # Parameters 6 and 7 control whips and pelvis width
+        shapes[0][6] = -2.0
+        shapes[0][7] = -2.0
+
+        # Parameters 9 controles leg length
+        # shapes[0][9] *= 0.5
+
+        shapes_tensor = tf.constant(shapes)
+        poses_tensor = tf.constant(poses)
+
+        perturbed_vertices_batch_op, _, _ = model.smpl(shapes_tensor, poses_tensor, get_skin=True)
+        perturbed_vertices = session.run(perturbed_vertices_batch_op)[0]
+
         photobridge.logging.log_mesh_prediction(
             logger=logger,
             image_path=image_path,
@@ -68,6 +97,7 @@ def visualize_mesh_predictions(_context, config_path):
             preprocessing_parameters=preprocessing_parameters,
             joints=joints[0],
             vertices=vertices[0],
+            perturbed_vertices=perturbed_vertices,
             camera=cameras[0],
             smpl_face_path=model_config.smpl_face_path
         )
